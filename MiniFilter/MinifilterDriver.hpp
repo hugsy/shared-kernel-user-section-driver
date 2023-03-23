@@ -4,7 +4,7 @@
 #include <fltKernel.h>
 
 
-#define DEVICE_NAME "CHANGEME"
+#define DEVICE_NAME L"CHANGEME"
 #define DRIVER_CONTEXT_TAG 'CHGM'
 #define DRIVER_TAG DRIVER_CONTEXT_TAG
 

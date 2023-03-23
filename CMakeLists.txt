@@ -19,19 +19,17 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-option(DEBUG                    "Enable Debug"                                 ON)
-option(BUILD_DEVICEDRIVER       "Compile the device driver"                    ON)
-option(BUILD_MINIFILTER         "Compile the minifilter driver"                ON)
+option(DEBUG "Enable Debug" ON)
+option(BUILD_DEVICEDRIVER "Compile the device driver" OFF)
+option(BUILD_MINIFILTER "Compile the minifilter driver" ON)
 
 message(STATUS "Locating Windows Driver Kit")
 find_package(WDK REQUIRED)
-
 
 #
 # Build DriverLib
 #
 add_subdirectory(Common)
-
 
 #
 # Build Driver
@@ -39,7 +37,6 @@ add_subdirectory(Common)
 if(BUILD_DEVICEDRIVER)
     add_subdirectory(DeviceDriver)
 endif()
-
 
 #
 # Build Minifilter
