@@ -124,7 +124,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
     // create section
     {
         OBJECT_ATTRIBUTES oa {};
-        InitializeObjectAttributes(&oa, nullptr, OBJ_KERNEL_HANDLE | OBJ_FORCE_ACCESS_CHECK, nullptr, nullptr);
+        InitializeObjectAttributes(&oa, nullptr, OBJ_EXCLUSIVE | OBJ_KERNEL_HANDLE | OBJ_FORCE_ACCESS_CHECK, nullptr, nullptr);
         LARGE_INTEGER li {.QuadPart = 0x1000};
         Status =
             ::ZwCreateSection(&Globals.SectionHandle, SECTION_ALL_ACCESS, &oa, &li, PAGE_READWRITE, SEC_COMMIT, NULL);
