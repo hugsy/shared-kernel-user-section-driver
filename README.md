@@ -1,6 +1,1 @@
-
-Start with
-
-```
-git clone --recurse-submodules https://github.com/hugsy/template-driver driver
-```
+experiment to use a section as um <-> km communication channel
