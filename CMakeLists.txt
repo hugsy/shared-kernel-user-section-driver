@@ -24,6 +24,8 @@ option(BUILD_DEVICEDRIVER "Compile the device driver" OFF)
 option(BUILD_MINIFILTER "Compile the minifilter driver" ON)
 
 message(STATUS "Locating Windows Driver Kit")
+set(_WIN32_WINNT_WIN10 0x0A00)
+set(WDK_WINVER ${_WIN32_WINNT_WIN10})
 find_package(WDK REQUIRED)
 
 #

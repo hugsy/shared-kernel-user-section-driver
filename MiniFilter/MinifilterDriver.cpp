@@ -115,7 +115,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         PVOID addr       = ::MmGetSystemRoutineAddress(&n);
         if ( !addr )
             Status = STATUS_PROCEDURE_NOT_FOUND;
-        CHECK_FAIL_AND_RETURN(L"MmGetSystemRoutineAddress");
+        CHECK_FAIL_AND_RETURN(L"MmGetSystemRoutineAddress(PsGetContextThread)");
 
         Globals.PsGetContextThread = (PsGetContextThread_t)addr;
         ok(L"PsGetContextThread = %p\n", addr);
@@ -124,10 +124,15 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
     // create section
     {
         OBJECT_ATTRIBUTES oa {};
-        InitializeObjectAttributes(&oa, nullptr, OBJ_KERNEL_HANDLE | OBJ_FORCE_ACCESS_CHECK, nullptr, nullptr);
+        InitializeObjectAttributes(
+            &oa,
+            nullptr,
+            OBJ_EXCLUSIVE | OBJ_KERNEL_HANDLE | OBJ_FORCE_ACCESS_CHECK,
+            nullptr,
+            nullptr);
         LARGE_INTEGER li {.QuadPart = 0x1000};
         Status =
-            ::ZwCreateSection(&Globals.SectionHandle, SECTION_ALL_ACCESS, &oa, &li, PAGE_READWRITE, SEC_COMMIT, NULL);
+            ::ZwCreateSection(&Globals.SectionHandle, SECTION_MAP_WRITE, &oa, &li, PAGE_READWRITE, SEC_COMMIT, NULL);
         CHECK_FAIL_AND_RETURN(L"ZwCreateSection");
     }
     ok(L"Section at %p\n", Globals.SectionHandle);
@@ -136,10 +141,8 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
     Status = ::FltRegisterFilter(DriverObject, &g_FilterRegistration, &Globals.FilterHandle);
     CHECK_FAIL_AND_RETURN(L"FltRegisterFilter");
 
-
     Status = ::FltStartFiltering(Globals.FilterHandle);
     CHECK_FAIL_AND_RETURN(L"FltStartFiltering");
-
 
     ok(L"Loaded fs filter %s\n", DEVICE_NAME);
 
@@ -182,7 +185,7 @@ MinifilterDriverInstanceSetup(
     return STATUS_SUCCESS;
 }
 
-#define PRINT_REG64(r) ok(WIDEN(#r) L"=%016x\n", ctx->r)
+#define PRINT_REG64(r) ok(WIDEN(#r) L"=%016llx\n", ctx->r)
 
 
 FLT_PREOP_CALLBACK_STATUS
@@ -193,11 +196,11 @@ MinifilterDriverPreCreateOperation(
 {
     UNREFERENCED_PARAMETER(FltObjects);
     UNREFERENCED_PARAMETER(CompletionContext);
-
+    PVOID BaseAddress {nullptr};
     PCONTEXT ctx {nullptr};
+    HANDLE h {nullptr};
     usize ViewSize {0x1000};
 
-    PVOID BaseAddress {nullptr};
     NTSTATUS Status = ::ZwMapViewOfSection(
         Globals.SectionHandle,
         NtCurrentProcess(),
@@ -211,17 +214,24 @@ MinifilterDriverPreCreateOperation(
         PAGE_READWRITE);
     CHECK_FAIL_AND_EXIT(L"ZwMapViewOfSection");
 
-    ok(L"in PID=%x/TID=%x , MappedSection=%p\n", ::PsGetCurrentProcessId(), ::PsGetCurrentThreadId(), BaseAddress);
+    ok(L"in PID=%lu/TID=%lu , MappedSection=%p\n", ::PsGetCurrentProcessId(), ::PsGetCurrentThreadId(), BaseAddress);
 
-    ctx = (PCONTEXT)BaseAddress;
-    // ctx->ContextFlags = CONTEXT_FULL;
-    ctx->ContextFlags = CONTEXT_DEBUG_REGISTERS;
-    Status            = Globals.PsGetContextThread(PsGetCurrentThread(), ctx, UserMode);
+    h = ::MmSecureVirtualMemory(BaseAddress, ViewSize, PAGE_READWRITE);
+    if ( !h )
+        Status = STATUS_NOT_LOCKED;
+    CHECK_FAIL_AND_EXIT(L"MmSecureVirtualMemoryEx");
+
+    ctx               = (PCONTEXT)BaseAddress;
+    ctx->ContextFlags = CONTEXT_FULL;
+    // ctx->ContextFlags = CONTEXT_DEBUG_REGISTERS;
+    Status = Globals.PsGetContextThread(PsGetCurrentThread(), ctx, UserMode);
     CHECK_FAIL_AND_EXIT(L"PsGetContextThread");
 
-    // PRINT_REG64(Rip);
-    // PRINT_REG64(Rbp);
-    // PRINT_REG64(Rsp);
+    ::MmUnsecureVirtualMemory(h);
+
+    PRINT_REG64(Rip);
+    PRINT_REG64(Rbp);
+    PRINT_REG64(Rsp);
     // PRINT_REG64(Rax);
     // PRINT_REG64(Rbx);
     // PRINT_REG64(Rcx);
