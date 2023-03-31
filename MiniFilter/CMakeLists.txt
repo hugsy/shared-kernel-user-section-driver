@@ -11,6 +11,8 @@ target_compile_definitions(MinifilterDriver PRIVATE DEBUG=1)
 target_link_options(MinifilterDriver PUBLIC /integritycheck)
 target_link_libraries(MinifilterDriver DriverLib WDK::FLTMGR WDK::KSECDD)
 
+set(RC_FILE ${CMAKE_CURRENT_SOURCE_DIR}/MinifilterDriver.rc)
+set(INF_FILE ${CMAKE_CURRENT_SOURCE_DIR}/MinifilterDriver.inf)
 set(CERT_CN "BlahCat Corp")
 set(CERT_STORE "PrivateCertStore")
 set(CERT_FILE "$<TARGET_FILE_DIR:MinifilterDriver>/BlahCatTest.cer")
@@ -30,3 +32,6 @@ add_custom_command(
     COMMENT
     "Signing driver with self-signed certificate"
 )
+
+install(TARGETS MinifilterDriver DESTINATION Drivers)
+install(FILES $<TARGET_PDB_FILE:MinifilterDriver> ${RC_FILE} ${INF_FILE} DESTINATION Drivers/Debug)
