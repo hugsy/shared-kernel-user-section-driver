@@ -16,6 +16,8 @@ void Utils::KMutex::Lock()
 void Utils::KMutex::Unlock()
 {
     if (!::KeReleaseMutex(&_mutex, true))
+    {
         ::KeWaitForSingleObject(&_mutex, Executive, KernelMode, false, nullptr);
+    }
 }
 

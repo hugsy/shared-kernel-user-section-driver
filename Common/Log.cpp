@@ -5,16 +5,14 @@ namespace Log
 {
 
 void
-log(_In_ const wchar_t* lpFormatString, ...)
+Log(_In_ const wchar_t* FormatString, ...)
 {
     va_list args;
-    WCHAR buffer[1024] = {
-        0,
-    };
-    va_start(args, lpFormatString);
-    ::vswprintf_s(buffer, sizeof(buffer) / sizeof(WCHAR), lpFormatString, args);
+    wchar_t buffer[1024]{};
+    va_start(args, FormatString);
+    ::vswprintf_s(buffer, sizeof(buffer) / sizeof(wchar_t), FormatString, args);
     va_end(args);
-    ::KdPrint(("%S", buffer));
+    KdPrint(("%S", buffer));
 }
 
 void

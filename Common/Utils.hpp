@@ -115,11 +115,11 @@ private:
 };
 
 
-template<typename T, typename D>
+template<typename T, typename DTOR_FUNC>
 class ScopedWrapper
 {
 public:
-    ScopedWrapper(T& f, D d) : _f(f), _d(d)
+    ScopedWrapper(T& f, DTOR_FUNC d) : _f(f), _d(d)
     {
     }
 
@@ -136,7 +136,7 @@ public:
 
 private:
     T _f;
-    D _d;
+    DTOR_FUNC _d;
 };
 
 

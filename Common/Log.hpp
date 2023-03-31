@@ -15,7 +15,7 @@
 namespace Log
 {
 void
-log(_In_ const WCHAR* lpFormatString, ...);
+Log(_In_ const wchar_t* FormatString, ...);
 
 void
 ntperror(_In_ const wchar_t* prefix, _In_ NTSTATUS Status);
@@ -23,13 +23,13 @@ ntperror(_In_ const wchar_t* prefix, _In_ NTSTATUS Status);
 
 
 #ifdef _DEBUG
-#define dbg(fmt, ...) Log::log(L"[=] " fmt, __VA_ARGS__)
+#define dbg(fmt, ...) Log::Log(L"[=] " fmt, __VA_ARGS__)
 #else
 #define dbg(fmt, ...)
 #endif // _DEBUG
 
-#define ok(fmt, ...) Log::log(L"[+] " fmt, __VA_ARGS__)
-#define info(fmt, ...) Log::log(L"[*] " fmt, __VA_ARGS__)
-#define warn(fmt, ...) Log::log(L"[!] " fmt, __VA_ARGS__)
-#define err(fmt, ...) Log::log(L"[-] " fmt, __VA_ARGS__)
+#define ok(fmt, ...) Log::Log(L"[+] " fmt, __VA_ARGS__)
+#define info(fmt, ...) Log::Log(L"[*] " fmt, __VA_ARGS__)
+#define warn(fmt, ...) Log::Log(L"[!] " fmt, __VA_ARGS__)
+#define err(fmt, ...) Log::Log(L"[-] " fmt, __VA_ARGS__)
 #define perror(fmt, ...) Log::ntperror(fmt, __VA_ARGS__)
