@@ -7,7 +7,10 @@ env:
   VERBOSE: 1
   CMAKE_FLAGS: "-DDEBUG=ON"
 
-on: [push, pull_request]
+on: 
+  workflow_dispatch:
+  push:
+  pull_request:
 
 jobs:
   Build:
