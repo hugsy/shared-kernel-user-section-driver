@@ -20,6 +20,8 @@ set(CERT_FILE "$<TARGET_FILE_DIR:MinifilterDriver>/BlahCatTest.cer")
 add_custom_command(
     TARGET MinifilterDriver POST_BUILD
     COMMAND
+    powershell -ep bypass "Get-ChildItem -Recurse Cert:\\CurrentUser | Where-Object { $_.Subject -match '${CERT_CN}' } | Remove-Item"
+    COMMAND
     makecert.exe -r -pe -ss ${CERT_STORE} -n CN="${CERT_CN}" -eku 1.3.6.1.5.5.7.3.3 "${CERT_FILE}"
     COMMAND
     signtool.exe sign /v /a /fd SHA256 /s ${CERT_STORE} /n "${CERT_CN}" "$<TARGET_FILE:MinifilterDriver>"

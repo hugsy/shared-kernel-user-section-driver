@@ -1,24 +1,26 @@
 #include "MinifilterDriver.hpp"
 
+#include <ntddk.h>
+
 #include "../Common/Log.hpp"
 #include "../Common/Utils.hpp"
 
 #pragma prefast(disable : __WARNING_ENCODE_MEMBER_FUNCTION_POINTER, "Not valid for kernel mode drivers")
 
-#define CHECK_FAIL_AND_EXIT(x)                                                                                         \
+#define GOTO_EXIT_IF_FAILED(x)                                                                                         \
     {                                                                                                                  \
         if ( !NT_SUCCESS(Status) )                                                                                     \
         {                                                                                                              \
-            err(x L": Failed with %#x\n", Status);                                                                     \
+            err(x ": Failed with %#x\n", Status);                                                                      \
             goto Exit;                                                                                                 \
         }                                                                                                              \
     }
 
-#define CHECK_FAIL_AND_RETURN(x)                                                                                       \
+#define RETURN_IF_FAILED(x)                                                                                            \
     {                                                                                                                  \
         if ( !NT_SUCCESS(Status) )                                                                                     \
         {                                                                                                              \
-            err(x L": Failed with %#x\n", Status);                                                                     \
+            err(x ": Failed with %#x\n", Status);                                                                      \
             return Status;                                                                                             \
         }                                                                                                              \
     }
@@ -107,7 +109,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
     UNREFERENCED_PARAMETER(RegistryPath);
     PAGED_CODE();
     NTSTATUS Status;
-    info(L"Loading %s\n", DEVICE_NAME);
+    info("Loading %S\n", DEVICE_NAME);
 
     // solve PsGetContextThread
     {
@@ -115,10 +117,10 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         PVOID addr       = ::MmGetSystemRoutineAddress(&n);
         if ( !addr )
             Status = STATUS_PROCEDURE_NOT_FOUND;
-        CHECK_FAIL_AND_RETURN(L"MmGetSystemRoutineAddress(PsGetContextThread)");
+        RETURN_IF_FAILED("MmGetSystemRoutineAddress(PsGetContextThread)");
 
         Globals.PsGetContextThread = (PsGetContextThread_t)addr;
-        ok(L"PsGetContextThread = %p\n", addr);
+        ok("PsGetContextThread = %p\n", addr);
     }
 
     // create section
@@ -132,19 +134,19 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
             nullptr);
         LARGE_INTEGER li {.QuadPart = 0x1000};
         Status =
-            ::ZwCreateSection(&Globals.SectionHandle, SECTION_MAP_WRITE, &oa, &li, PAGE_READWRITE, SEC_COMMIT, NULL);
-        CHECK_FAIL_AND_RETURN(L"ZwCreateSection");
+            ::ZwCreateSection(&Globals.SectionHandle, SECTION_MAP_WRITE, &oa, &li, PAGE_READWRITE, SEC_COMMIT, nullptr);
+        RETURN_IF_FAILED("ZwCreateSection");
     }
-    ok(L"Section at %p\n", Globals.SectionHandle);
+    ok("Section at %p\n", Globals.SectionHandle);
 
     // do the registration
     Status = ::FltRegisterFilter(DriverObject, &g_FilterRegistration, &Globals.FilterHandle);
-    CHECK_FAIL_AND_RETURN(L"FltRegisterFilter");
+    RETURN_IF_FAILED("FltRegisterFilter");
 
     Status = ::FltStartFiltering(Globals.FilterHandle);
-    CHECK_FAIL_AND_RETURN(L"FltStartFiltering");
+    RETURN_IF_FAILED("FltStartFiltering");
 
-    ok(L"Loaded fs filter %s\n", DEVICE_NAME);
+    ok("Loaded fs filter %S\n", DEVICE_NAME);
 
     return Status;
 }
@@ -162,7 +164,7 @@ MinifilterDriverUnload(_In_ FLT_FILTER_UNLOAD_FLAGS Flags)
     if ( Globals.FilterHandle )
         ::ZwClose(Globals.FilterHandle);
 
-    ok(L"Unloaded fs filter %s\n", DEVICE_NAME);
+    ok("Unloaded fs filter %S\n", DEVICE_NAME);
 
     return STATUS_SUCCESS;
 }
@@ -185,7 +187,7 @@ MinifilterDriverInstanceSetup(
     return STATUS_SUCCESS;
 }
 
-#define PRINT_REG64(r) ok(WIDEN(#r) L"=%016llx\n", ctx->r)
+#define PRINT_REG64(r) ok(#r "=%016llx\n", ctx->r)
 
 
 FLT_PREOP_CALLBACK_STATUS
@@ -206,44 +208,47 @@ MinifilterDriverPreCreateOperation(
         NtCurrentProcess(),
         &BaseAddress,
         0L,
-        0L,
+        ViewSize,
         NULL,
         &ViewSize,
         ViewUnmap,
         0L,
         PAGE_READWRITE);
-    CHECK_FAIL_AND_EXIT(L"ZwMapViewOfSection");
+    GOTO_EXIT_IF_FAILED("ZwMapViewOfSection");
 
-    ok(L"in PID=%lu/TID=%lu , MappedSection=%p\n", ::PsGetCurrentProcessId(), ::PsGetCurrentThreadId(), BaseAddress);
+    ok("in PID=%lu/TID=%lu , MappedSection=%p\n", ::PsGetCurrentProcessId(), ::PsGetCurrentThreadId(), BaseAddress);
 
     h = ::MmSecureVirtualMemory(BaseAddress, ViewSize, PAGE_READWRITE);
     if ( !h )
         Status = STATUS_NOT_LOCKED;
-    CHECK_FAIL_AND_EXIT(L"MmSecureVirtualMemoryEx");
+    GOTO_EXIT_IF_FAILED("MmSecureVirtualMemoryEx");
 
-    ctx               = (PCONTEXT)BaseAddress;
+    ctx               = reinterpret_cast<PCONTEXT>(BaseAddress);
     ctx->ContextFlags = CONTEXT_FULL;
-    // ctx->ContextFlags = CONTEXT_DEBUG_REGISTERS;
-    Status = Globals.PsGetContextThread(PsGetCurrentThread(), ctx, UserMode);
-    CHECK_FAIL_AND_EXIT(L"PsGetContextThread");
-
-    ::MmUnsecureVirtualMemory(h);
+    Status            = Globals.PsGetContextThread(PsGetCurrentThread(), ctx, UserMode);
+    GOTO_EXIT_IF_FAILED("PsGetContextThread");
 
     PRINT_REG64(Rip);
     PRINT_REG64(Rbp);
     PRINT_REG64(Rsp);
-    // PRINT_REG64(Rax);
-    // PRINT_REG64(Rbx);
-    // PRINT_REG64(Rcx);
-    // PRINT_REG64(Rdx);
-    // PRINT_REG64(Rdx);
+    PRINT_REG64(Rax);
+    PRINT_REG64(Rbx);
+    PRINT_REG64(Rcx);
+    PRINT_REG64(Rdx);
+    PRINT_REG64(Rdx);
 
-    ok(L"PsGetContextThread() succeeded: HWBP=%s\n", ctx->Dr7 ? L"TRUE" : L"FALSE");
+    if ( ctx->Rip <= 0x7fffffffffffull )
+    {
+        ok("PsGetContextThread() succeeded\n");
+    }
 
-    Status = ::ZwUnmapViewOfSection(ZwCurrentProcess(), BaseAddress);
-    CHECK_FAIL_AND_EXIT(L"ZwUnmapViewOfSection");
+    DbgBreakPoint();
 
-    // dbg(L"section %p unmapped\n", BaseAddress);
+    ::MmUnsecureVirtualMemory(h);
+    Status = ::ZwUnmapViewOfSection(NtCurrentProcess(), BaseAddress);
+    GOTO_EXIT_IF_FAILED("ZwUnmapViewOfSection");
+
+    dbg("Section view %p unmapped\n", BaseAddress);
 
 Exit:
     return FLT_PREOP_SUCCESS_NO_CALLBACK;
