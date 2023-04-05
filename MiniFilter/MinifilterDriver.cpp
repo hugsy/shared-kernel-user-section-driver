@@ -100,6 +100,7 @@ struct
     PFLT_FILTER FilterHandle {nullptr};
     HANDLE SectionHandle {nullptr};
     PsGetContextThread_t PsGetContextThread;
+    HANDLE SystemHandle {nullptr};
 } Globals;
 
 
@@ -137,7 +138,21 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
             ::ZwCreateSection(&Globals.SectionHandle, SECTION_MAP_WRITE, &oa, &li, PAGE_READWRITE, SEC_COMMIT, nullptr);
         RETURN_IF_FAILED("ZwCreateSection");
     }
-    ok("Section at %p\n", Globals.SectionHandle);
+    ok("Section handle at %p\n", Globals.SectionHandle);
+
+    // get a handle to system
+    {
+        Status = ::ObOpenObjectByPointer(
+            ::PsInitialSystemProcess,
+            OBJ_KERNEL_HANDLE,
+            nullptr,
+            PROCESS_ALL_ACCESS,
+            *PsProcessType,
+            KernelMode,
+            &Globals.SystemHandle);
+        RETURN_IF_FAILED("ObOpenObjectByPointer");
+    }
+    ok("System handle at %p\n", Globals.SystemHandle);
 
     // do the registration
     Status = ::FltRegisterFilter(DriverObject, &g_FilterRegistration, &Globals.FilterHandle);
@@ -164,6 +179,9 @@ MinifilterDriverUnload(_In_ FLT_FILTER_UNLOAD_FLAGS Flags)
     if ( Globals.FilterHandle )
         ::ZwClose(Globals.FilterHandle);
 
+    if ( Globals.SystemHandle )
+        ::ZwClose(Globals.SystemHandle);
+
     ok("Unloaded fs filter %S\n", DEVICE_NAME);
 
     return STATUS_SUCCESS;
@@ -187,7 +205,7 @@ MinifilterDriverInstanceSetup(
     return STATUS_SUCCESS;
 }
 
-#define PRINT_REG64(r) ok(#r "=%016llx\n", ctx->r)
+#define PRINT_REG64(r) ok(#r "=%016llx\n", ctx2.r)
 
 
 FLT_PREOP_CALLBACK_STATUS
@@ -200,12 +218,21 @@ MinifilterDriverPreCreateOperation(
     UNREFERENCED_PARAMETER(CompletionContext);
     PVOID BaseAddress {nullptr};
     PCONTEXT ctx {nullptr};
+    CONTEXT ctx2 {};
     HANDLE h {nullptr};
     usize ViewSize {0x1000};
+    NTSTATUS Status {STATUS_UNSUCCESSFUL};
+    KAPC_STATE ApcState {};
 
-    NTSTATUS Status = ::ZwMapViewOfSection(
+    if ( HandleToULong(::PsGetCurrentProcessId()) == 4ull )
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+
+    ::KeStackAttachProcess(::PsInitialSystemProcess, &ApcState);
+
+    Status = ::ZwMapViewOfSection(
         Globals.SectionHandle,
-        NtCurrentProcess(),
+        // NtCurrentProcess(),
+        Globals.SystemHandle,
         &BaseAddress,
         0L,
         ViewSize,
@@ -225,32 +252,36 @@ MinifilterDriverPreCreateOperation(
 
     ctx               = reinterpret_cast<PCONTEXT>(BaseAddress);
     ctx->ContextFlags = CONTEXT_FULL;
-    Status            = Globals.PsGetContextThread(PsGetCurrentThread(), ctx, UserMode);
+    Status            = Globals.PsGetContextThread(::PsGetCurrentThread(), ctx, UserMode);
     GOTO_EXIT_IF_FAILED("PsGetContextThread");
 
-    PRINT_REG64(Rip);
-    PRINT_REG64(Rbp);
-    PRINT_REG64(Rsp);
-    PRINT_REG64(Rax);
-    PRINT_REG64(Rbx);
-    PRINT_REG64(Rcx);
-    PRINT_REG64(Rdx);
-    PRINT_REG64(Rdx);
+    ::memcpy(&ctx2, ctx, sizeof(ctx2));
 
-    if ( ctx->Rip <= 0x7fffffffffffull )
-    {
-        ok("PsGetContextThread() succeeded\n");
-    }
-
-    DbgBreakPoint();
+    // DbgBreakPoint();
 
     ::MmUnsecureVirtualMemory(h);
-    Status = ::ZwUnmapViewOfSection(NtCurrentProcess(), BaseAddress);
+    // Status = ::ZwUnmapViewOfSection(NtCurrentProcess(), BaseAddress);
+    Status = ::ZwUnmapViewOfSection(Globals.SystemHandle, BaseAddress);
     GOTO_EXIT_IF_FAILED("ZwUnmapViewOfSection");
-
     dbg("Section view %p unmapped\n", BaseAddress);
 
+
 Exit:
+    KeUnstackDetachProcess(&ApcState);
+
+    if ( ctx2.Rip && ctx2.Rip <= 0x7fffffffffffull )
+    {
+        ok("PsGetContextThread() succeeded\n");
+        PRINT_REG64(Rip);
+        PRINT_REG64(Rbp);
+        PRINT_REG64(Rsp);
+        PRINT_REG64(Rax);
+        PRINT_REG64(Rbx);
+        PRINT_REG64(Rcx);
+        PRINT_REG64(Rdx);
+        PRINT_REG64(Rdx);
+    }
+
     return FLT_PREOP_SUCCESS_NO_CALLBACK;
 }
 
